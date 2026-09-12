@@ -46,16 +46,14 @@ app.use('/api/generate-assessment', assessmentRouter);
 app.use('/api/analyze-skills', analysisRouter);
 app.use('/api/recommend-learning', analysisRouter);
 
-// Root informational endpoint
-app.get('/', (req, res) => {
-  res.json({
-    name: 'SkillBridge AI API',
-    tagline: 'Learn Smarter. Identify Skills. Grow Faster.',
-    hackathon: 'Smart India Hackathon 2026',
-    status: 'Running',
-    geminiActive: isGeminiConfigured(),
-    docs: '/api/health'
-  });
+// Serve React frontend
+const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
+
+app.use(express.static(clientDistPath));
+
+// React SPA fallback
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(clientDistPath, 'index.html'));
 });
 
 // JSON 404 handler - Never return HTML
