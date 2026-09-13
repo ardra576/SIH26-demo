@@ -17,12 +17,14 @@ import {
 import StatCard from '../components/StatCard';
 import JourneyStepper from '../components/JourneyStepper';
 import SkillMeter from '../components/SkillMeter';
-import { storage } from '../utils/storage';
+import SkillChart from '../components/SkillChart';
+import ProgressChart from '../components/ProgressChart';
 import { api } from '../services/api';
+import { storage } from '../utils/storage';
 import { showToast } from '../components/Toast';
 
 export default function DashboardPage() {
-  const [profile, setProfile] = useState(storage.getProfile());
+  const [profile, setProfile] = useState(storage.getProfile() || {});
   const [stats, setStats] = useState(storage.getStats());
   const [competencies, setCompetencies] = useState(storage.getCompetencies());
   const [recommendations, setRecommendations] = useState([]);
@@ -87,10 +89,10 @@ export default function DashboardPage() {
           </div>
 
           <h1 style={{ fontSize: 'clamp(1.8rem, 3.5vw, 2.3rem)', fontWeight: 800, letterSpacing: '-0.02em', marginBottom: '0.5rem' }}>
-            Welcome back, {profile.name || 'Learner'} 👋
+            Welcome back, {profile?.name ?? 'Learner'} 👋
           </h1>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
-            You are enrolled in the <strong style={{ color: '#FFFFFF' }}>{profile.role || 'AI Engineering Track'}</strong>.
+            You are enrolled in the <strong style={{ color: '#FFFFFF' }}>{profile?.role ?? 'AI Engineering Track'}</strong>.
             SkillBridge AI has identified your top competency opportunities.
           </p>
         </div>
@@ -146,6 +148,14 @@ export default function DashboardPage() {
           icon={Zap}
         />
       </div>
+
+      {/* Charts Section */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem', marginBottom: '2rem' }}>
+        <SkillChart data={competencies} />
+        <ProgressChart data={competencies.map(comp => ({ name: comp.name, value: comp.score }))} title="Competency Scores" />
+      </div>
+
+      {/* 5-Step Learning Journey Stepper */}
 
       {/* 5-Step Learning Journey Stepper */}
       <JourneyStepper currentStage={profile.currentJourneyStage || 'ANALYZE'} />

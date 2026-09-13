@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-route
 import { Menu, Sparkles, LayoutDashboard } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
+import AIChatbot from './components/AIChatbot';
 import ToastContainer from './components/Toast';
 import LandingPage from './pages/LandingPage';
 import UserSetupPage from './pages/UserSetupPage';
@@ -126,6 +127,7 @@ export default function App() {
         {/* Catch-all redirect */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <AIChatbot />
     </BrowserRouter>
   );
 }

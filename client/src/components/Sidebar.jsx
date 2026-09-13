@@ -28,7 +28,7 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar({ isOpen, onClose }) {
-  const profile = storage.getProfile();
+  const profile = storage.getProfile() || {};
 
   return (
     <>

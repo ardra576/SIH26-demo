@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -10,6 +10,7 @@ import quizRouter from './routes/quiz.js';
 import assessmentRouter from './routes/assessment.js';
 import analysisRouter from './routes/analysis.js';
 import { isGeminiConfigured } from './services/geminiService.js';
+import chatRouter from './routes/chat.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,6 +46,7 @@ app.use('/api/evaluate-quiz', quizRouter); // supports both /api/evaluate-quiz a
 app.use('/api/generate-assessment', assessmentRouter);
 app.use('/api/analyze-skills', analysisRouter);
 app.use('/api/recommend-learning', analysisRouter);
+app.use('/api/chat', chatRouter);
 
 // Root informational endpoint
 app.get('/', (req, res) => {

@@ -303,3 +303,17 @@ function getFallbackAssessment(competency, count = 5) {
     isDemo: true
   };
 }
+export async function chat(message) {
+  // Simple chat endpoint – returns Gemini response or demo fallback
+  if (!isGeminiConfigured()) {
+    return { reply: 'Demo mode: I am here to assist you with SkillBridge AI. Ask any question about your learning path.' };
+  }
+  const systemInstruction = 'You are a helpful AI assistant for SkillBridge. Respond in plain text without markdown.';
+  try {
+    const raw = await callGeminiApi(systemInstruction, message);
+    return { reply: raw.trim() };
+  } catch (err) {
+    console.error('[SkillBridge AI] Chat endpoint error:', err.message);
+    return { reply: 'Sorry, I could not process your request.' };
+  }
+}
