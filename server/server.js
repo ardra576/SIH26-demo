@@ -38,6 +38,11 @@ app.use((req, res, next) => {
   next();
 });
 
+const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
+
+// Serve frontend static assets from client/dist
+app.use(express.static(clientDistPath));
+
 // Mount API Routes
 app.use('/api/health', healthRouter);
 app.use('/api/process-material', materialsRouter);
@@ -48,22 +53,27 @@ app.use('/api/analyze-skills', analysisRouter);
 app.use('/api/recommend-learning', analysisRouter);
 app.use('/api/chat', chatRouter);
 
-// Serve React frontend
-const clientDistPath = path.join(__dirname, '..', 'client', 'dist');
-
-app.use(express.static(clientDistPath));
-
-// React SPA fallback
-app.get(/^(?!\/api).*/, (req, res) => {
-  res.sendFile(path.join(clientDistPath, 'index.html'));
-});
-
-// JSON 404 handler - Never return HTML
-app.use((req, res) => {
+// API 404 handler for unmatched /api requests
+app.use('/api/*', (req, res) => {
   res.status(404).json({
     success: false,
-    error: 'Endpoint not found',
+    error: 'API endpoint not found',
     requestedUrl: req.originalUrl
+  });
+});
+
+// React SPA fallback handler for all non-API routes
+app.get('*', (req, res) => {
+  const indexPath = path.join(clientDistPath, 'index.html');
+  res.sendFile(indexPath, (err) => {
+    if (err) {
+      res.status(404).json({
+        name: 'SkillBridge AI API',
+        status: 'Running',
+        geminiActive: isGeminiConfigured(),
+        message: 'Frontend static assets not built yet. Run npm run build.'
+      });
+    }
   });
 });
 

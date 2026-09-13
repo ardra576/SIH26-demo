@@ -7,30 +7,56 @@
 import { cleanAIJsonResponse } from '../utils/jsonCleaner.js';
 import { DEMO_QUIZZES, DEMO_RECOMMENDATIONS } from '../utils/demoData.js';
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
-const GEMINI_MODEL = process.env.GEMINI_MODEL || 'gemini-1.5-flash';
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+const FAST_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.6-flash',
+  'gemini-3.5-flash',
+  'gemini-3.1-flash-lite',
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash'
+];
+
+export function getGeminiApiKey() {
+  return (process.env.GEMINI_API_KEY || '').trim();
+}
+
+export function getGeminiModel() {
+  return process.env.GEMINI_MODEL || FAST_MODELS[0];
+}
 
 /**
  * Check if live Gemini API is configured
  */
 export function isGeminiConfigured() {
+  const key = getGeminiApiKey();
   return Boolean(
-    GEMINI_API_KEY &&
-    GEMINI_API_KEY.trim() !== '' &&
-    !GEMINI_API_KEY.includes('your_gemini_api_key_here')
+    key &&
+    key !== '' &&
+    !key.includes('your_gemini_api_key_here')
   );
 }
 
 /**
- * Call Gemini REST API with prompt
+ * Call Gemini REST API with prompt and automated model cascade
  */
-async function callGeminiApi(systemInstruction, userPrompt) {
+async function callGeminiApi(systemInstruction, userPrompt, isJson = true) {
   if (!isGeminiConfigured()) {
     throw new Error('GEMINI_API_KEY is not configured. Demo Mode is active.');
   }
 
-  const url = `${GEMINI_API_URL}?key=${GEMINI_API_KEY.trim()}`;
+  const key = getGeminiApiKey();
+  const modelsToTry = [getGeminiModel(), ...FAST_MODELS.filter(m => m !== getGeminiModel())];
+
+  const generationConfig = {
+    temperature: isJson ? 0.2 : 0.6,
+    topP: 0.85,
+    topK: 40,
+    maxOutputTokens: 2048
+  };
+
+  if (isJson) {
+    generationConfig.responseMimeType = 'application/json';
+  }
 
   const payload = {
     contents: [
@@ -41,41 +67,35 @@ async function callGeminiApi(systemInstruction, userPrompt) {
         ]
       }
     ],
-    generationConfig: {
-      temperature: 0.2,
-      topP: 0.8,
-      topK: 40,
-      maxOutputTokens: 2048,
-      responseMimeType: 'application/json'
-    }
+    generationConfig
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  });
+  let lastError = null;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    let errorDetail = response.statusText;
+  for (const model of modelsToTry) {
     try {
-      const errJson = JSON.parse(errorText);
-      errorDetail = errJson.error?.message || errorDetail;
-    } catch {
-      errorDetail = errorText.substring(0, 150);
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (rawText) return rawText;
+      } else {
+        const errorText = await response.text();
+        console.warn(`[SkillBridge AI] Model ${model} returned ${response.status}, attempting fallback model...`);
+        lastError = `Gemini API Error (${response.status}): ${errorText.substring(0, 120)}`;
+      }
+    } catch (err) {
+      lastError = err.message;
     }
-    throw new Error(`Gemini API Error (${response.status}): ${errorDetail}`);
   }
 
-  const result = await response.json();
-  const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!rawText) {
-    throw new Error('Gemini API returned an empty response.');
-  }
-
-  return rawText;
+  throw new Error(lastError || 'Gemini API returned an empty response across all available models.');
 }
 
 /**
@@ -303,17 +323,114 @@ function getFallbackAssessment(competency, count = 5) {
     isDemo: true
   };
 }
-export async function chat(message) {
-  // Simple chat endpoint – returns Gemini response or demo fallback
+
+/**
+ * SkillBridge AI General-Purpose Educational & Career Assistant
+ */
+export async function chat(message, history = []) {
+  const query = (message || '').trim();
+  if (!query) {
+    return { reply: "Hello! I am your SkillBridge AI Assistant. Ask me any question in mathematics, programming, science, engineering, or career guidance." };
+  }
+
   if (!isGeminiConfigured()) {
-    return { reply: 'Demo mode: I am here to assist you with SkillBridge AI. Ask any question about your learning path.' };
+    return {
+      reply: "SkillBridge AI Assistant is active! GEMINI_API_KEY is not currently set in environment variables. Please set GEMINI_API_KEY in Render to receive live AI answers.",
+      error: "GEMINI_API_KEY is not configured"
+    };
   }
-  const systemInstruction = 'You are a helpful AI assistant for SkillBridge. Respond in plain text without markdown.';
-  try {
-    const raw = await callGeminiApi(systemInstruction, message);
-    return { reply: raw.trim() };
-  } catch (err) {
-    console.error('[SkillBridge AI] Chat endpoint error:', err.message);
-    return { reply: 'Sorry, I could not process your request.' };
+
+  const systemInstruction = "You are SkillBridge AI Assistant, a helpful general-purpose educational and career assistant. Answer the user's actual question directly, accurately, and clearly. You can help with mathematics, equations, programming, science, engineering, technology, education, careers, reasoning, and general knowledge. For equations and mathematical problems, solve them step by step and verify the result. Stay relevant to the user's question. Do not unnecessarily redirect the user to quizzes, assessments, or SkillBridge features. Maintain conversation context for follow-up questions. For any harmful, illegal, or dangerous requests, refuse briefly and safely without providing instructions that could cause harm. For normal educational and technical questions, answer thoroughly and clearly.";
+
+  // Build multi-turn conversation contents for session context memory
+  const contents = [];
+  if (Array.isArray(history) && history.length > 0) {
+    const recentHistory = history.slice(-10);
+    for (const h of recentHistory) {
+      if (h && h.role === 'user' && typeof h.text === 'string' && h.text.trim()) {
+        contents.push({
+          role: 'user',
+          parts: [{ text: h.text.trim() }]
+        });
+      } else if (h && (h.role === 'assistant' || h.role === 'model') && typeof h.text === 'string' && h.text.trim() && !h.isError) {
+        contents.push({
+          role: 'model',
+          parts: [{ text: h.text.trim() }]
+        });
+      }
+    }
   }
+
+  // Append current user message
+  contents.push({
+    role: 'user',
+    parts: [{ text: query }]
+  });
+
+  const key = getGeminiApiKey();
+  const modelsToTry = [getGeminiModel(), ...FAST_MODELS.filter(m => m !== getGeminiModel())];
+
+  const payload = {
+    systemInstruction: {
+      parts: [{ text: systemInstruction }]
+    },
+    contents,
+    generationConfig: {
+      temperature: 0.4,
+      topP: 0.85,
+      topK: 40,
+      maxOutputTokens: 2048
+    }
+  };
+
+  let lastError = null;
+  let isQuotaExceeded = false;
+
+  for (const model of modelsToTry) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        const candidate = result.candidates?.[0];
+        const rawText = candidate?.content?.parts?.map(p => p.text || '').join('').trim();
+
+        if (rawText) {
+          return { reply: rawText };
+        }
+
+        if (candidate?.finishReason === 'SAFETY') {
+          return { reply: "I cannot fulfill this request as it involves sensitive or unsafe content. Please feel free to ask any educational, mathematical, programming, or career question." };
+        }
+      } else {
+        const errorText = await response.text();
+        console.warn(`[SkillBridge AI] Chat with model ${model} returned ${response.status}: ${errorText.substring(0, 120)}`);
+        if (response.status === 429 || errorText.includes('RESOURCE_EXHAUSTED') || errorText.includes('quota')) {
+          isQuotaExceeded = true;
+        }
+        lastError = `Gemini status ${response.status}: ${errorText.substring(0, 120)}`;
+      }
+    } catch (err) {
+      lastError = err.message;
+    }
+  }
+
+  console.error('[SkillBridge AI] All candidate Gemini models failed:', lastError);
+
+  if (isQuotaExceeded) {
+    return {
+      reply: "The Gemini AI rate limit/quota has been reached. Please try again in a few moments. All other SkillBridge AI features (Quizzes, Assessments, Diagnostics) remain active.",
+      error: "Gemini API Quota Exceeded (429)"
+    };
+  }
+
+  return {
+    reply: "The AI service is temporarily unavailable. Please try your question again in a moment.",
+    error: lastError
+  };
 }
